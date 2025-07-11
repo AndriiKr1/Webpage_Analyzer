@@ -2,9 +2,12 @@ package services
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AndriiKr1/webpage_analyzer/database"
@@ -13,6 +16,8 @@ import (
 )
 
 func ProcessURL(id uint, rawURL string) {
+	log.Printf("Starting analysis for URL ID %d: %s", id, rawURL)
+
 	// Mark as "running"
 	database.DB.Model(&models.URL{}).Where("id = ?", id).Update("status", "running")
 
@@ -22,18 +27,21 @@ func ProcessURL(id uint, rawURL string) {
 
 	resp, err := client.Get(rawURL)
 	if err != nil {
+		log.Printf("Failed to fetch URL ID %d: %v", id, err)
 		database.DB.Model(&models.URL{}).Where("id = ?", id).Update("status", "error")
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		log.Printf("Non-200 status code for URL ID %d: %d", id, resp.StatusCode)
 		database.DB.Model(&models.URL{}).Where("id = ?", id).Update("status", "error")
 		return
 	}
 
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
+		log.Printf("Failed to parse HTML for URL ID %d: %v", id, err)
 		database.DB.Model(&models.URL{}).Where("id = ?", id).Update("status", "error")
 		return
 	}
@@ -41,6 +49,7 @@ func ProcessURL(id uint, rawURL string) {
 	// Parse base URL for link analysis
 	baseURL, err := url.Parse(rawURL)
 	if err != nil {
+		log.Printf("Failed to parse base URL for ID %d: %v", id, err)
 		database.DB.Model(&models.URL{}).Where("id = ?", id).Update("status", "error")
 		return
 	}
@@ -64,7 +73,9 @@ func ProcessURL(id uint, rawURL string) {
 	// Links analysis
 	internal := 0
 	external := 0
-	broken := 0
+	var broken int64 = 0
+	var wg sync.WaitGroup
+	var links []string
 
 	doc.Find("a[href]").Each(func(i int, s *goquery.Selection) {
 		href, exists := s.Attr("href")
@@ -90,21 +101,31 @@ func ProcessURL(id uint, rawURL string) {
 			external++
 		}
 
-		// Check if link is broken (simplified - just check if it's accessible)
+		// Collect links for broken link checking
+		links = append(links, linkURL.String())
+	})
+
+	// Check for broken links with proper synchronization
+	for _, link := range links {
+		wg.Add(1)
 		go func(checkURL string) {
+			defer wg.Done()
 			client := http.Client{
 				Timeout: 5 * time.Second,
 			}
 			resp, err := client.Head(checkURL)
-			if err != nil || resp.StatusCode >= 400 {
-				broken++
+			if err != nil || (resp != nil && resp.StatusCode >= 400) {
+				atomic.AddInt64(&broken, 1)
 			}
-		}(linkURL.String())
-	})
+		}(link)
+	}
+
+	// Wait for all broken link checks to complete
+	wg.Wait()
 
 	data["internal_links"] = internal
 	data["external_links"] = external
-	data["broken_links"] = broken
+	data["broken_links"] = int(broken)
 
 	// Check for login form
 	hasLogin := false
@@ -140,6 +161,9 @@ func ProcessURL(id uint, rawURL string) {
 
 	// Update database with all collected data
 	database.DB.Model(&models.URL{}).Where("id = ?", id).Updates(data)
+
+	log.Printf("Completed analysis for URL ID %d: Internal: %d, External: %d, Broken: %d",
+		id, internal, external, int(broken))
 }
 
 func getHTMLVersion(resp *http.Response) string {
