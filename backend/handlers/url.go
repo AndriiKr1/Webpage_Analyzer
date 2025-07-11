@@ -108,3 +108,35 @@ func BulkRerunURLs(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"message": "URLs queued for re-analysis"})
 }
+
+func ReAnalyzeURL(c *gin.Context) {
+	id := c.Param("id")
+	var url models.URL
+
+	if err := database.DB.First(&url, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+
+	// Reset status and clear previous analysis data
+	updates := map[string]interface{}{
+		"status":         "queued",
+		"title":          "",
+		"html_version":   "",
+		"h1":             0,
+		"h2":             0,
+		"h3":             0,
+		"h4":             0,
+		"h5":             0,
+		"h6":             0,
+		"internal_links": 0,
+		"external_links": 0,
+		"broken_links":   0,
+		"has_login_form": false,
+	}
+
+	database.DB.Model(&url).Updates(updates)
+	go services.ProcessURL(url.ID, url.Address)
+
+	c.JSON(http.StatusOK, gin.H{"message": "URL queued for re-analysis"})
+}

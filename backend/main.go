@@ -25,6 +25,7 @@ func main() {
 		api.GET("/urls", handlers.ListURLs)
 		api.GET("/urls/:id", handlers.GetURL)
 		api.DELETE("/urls/:id", handlers.DeleteURL)
+		api.POST("/urls/:id/analyze", handlers.ReAnalyzeURL)
 		api.POST("/urls/bulk-delete", handlers.BulkDeleteURLs)
 		api.POST("/urls/bulk-rerun", handlers.BulkRerunURLs)
 	}
@@ -56,7 +57,7 @@ func corsMiddleware() gin.HandlerFunc {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, GET, DELETE, OPTIONS")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)

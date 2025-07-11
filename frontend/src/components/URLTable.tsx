@@ -133,8 +133,21 @@ export default function URLTable() {
     if (selectedIds.length === 0) return;
     
     try {
-      // TODO: Implement bulk delete API endpoint
-      console.log('Deleting URLs:', selectedIds);
+      const response = await fetch('http://localhost:8080/api/urls/bulk-delete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer devtoken123'
+        },
+        body: JSON.stringify({
+          ids: selectedIds
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete URLs');
+      }
+
       setSelectedIds([]);
       setSelectAll(false);
       fetchUrls();
@@ -147,8 +160,21 @@ export default function URLTable() {
     if (selectedIds.length === 0) return;
     
     try {
-      // TODO: Implement bulk rerun API endpoint  
-      console.log('Re-running analysis for URLs:', selectedIds);
+      const response = await fetch('http://localhost:8080/api/urls/bulk-rerun', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer devtoken123'
+        },
+        body: JSON.stringify({
+          ids: selectedIds
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to rerun analysis');
+      }
+
       setSelectedIds([]);
       setSelectAll(false);
       fetchUrls();

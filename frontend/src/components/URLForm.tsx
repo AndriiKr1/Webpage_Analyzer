@@ -48,8 +48,8 @@ export default function URLForm() {
         throw new Error(errorData.error || 'Request failed');
       }
 
-      const data = await response.json();
-      setSuccess(`URL added successfully! Analysis started with ID: ${data.id}`);
+      await response.json(); // Get response data
+      setSuccess(`URL successfully added! Analysis started.`);
       setUrl('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add URL');
@@ -100,6 +100,7 @@ export default function URLForm() {
         {success && (
           <div className="p-3 bg-green-50 border border-green-200 rounded-md">
             <p className="text-green-800 text-sm">{success}</p>
+           
           </div>
         )}
         

@@ -64,6 +64,8 @@ export default function URLDetails() {
     
     try {
       setLoading(true);
+      setError(null);
+      
       const response = await fetch(`${API_BASE_URL}/api/urls/${urlData.id}/analyze`, {
         method: 'POST',
         headers: {
@@ -80,6 +82,7 @@ export default function URLDetails() {
       await fetchDetails();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to re-analyze URL');
+      setLoading(false); // Only set loading false on error, fetchDetails will handle success case
     }
   };
 
@@ -89,6 +92,18 @@ export default function URLDetails() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Auto-refresh when URL is running
+  useEffect(() => {
+    if (!urlData || urlData.status !== 'running') return;
+
+    const interval = setInterval(() => {
+      fetchDetails();
+    }, 3000); // Refresh every 3 seconds when running
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlData?.status]);
 
   if (loading) {
     return (
@@ -179,6 +194,22 @@ export default function URLDetails() {
         <h1 className="text-3xl font-bold text-gray-900">URL Analysis Details</h1>
       </div>
 
+      {/* Running Analysis Info */}
+      {urlData.status === 'running' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-4 mb-6">
+          <div className="flex items-center">
+            <svg className="animate-spin h-5 w-5 text-blue-600 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <div>
+              <p className="text-blue-800 font-medium">Analysis in Progress</p>
+              <p className="text-blue-600 text-sm">The website is being analyzed. This page will update automatically when complete.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Basic Info Card */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <h2 className="text-xl font-semibold mb-4">Basic Information</h2>
@@ -189,13 +220,23 @@ export default function URLDetails() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
-            <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
               urlData.status === 'done' ? 'bg-green-100 text-green-800' :
               urlData.status === 'running' ? 'bg-blue-100 text-blue-800' :
               urlData.status === 'error' ? 'bg-red-100 text-red-800' :
               'bg-yellow-100 text-yellow-800'
             }`}>
-              {urlData.status}
+              {urlData.status === 'running' && (
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              )}
+              {urlData.status === 'done' ? 'Completed' :
+               urlData.status === 'running' ? 'Analyzing...' :
+               urlData.status === 'error' ? 'Failed' :
+               urlData.status === 'queued' ? 'Queued' :
+               urlData.status}
             </span>
           </div>
           <div>

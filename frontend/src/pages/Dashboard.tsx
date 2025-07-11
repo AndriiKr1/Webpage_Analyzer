@@ -40,6 +40,7 @@ export default function Dashboard() {
   const [data, setData] = useState<URLData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [limit, setLimit] = useState(10);
@@ -51,6 +52,7 @@ export default function Dashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
@@ -66,14 +68,25 @@ export default function Dashboard() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch data');
+        throw new Error(`HTTP ${response.status}: Failed to fetch data`);
       }
 
       const result: DashboardResponse = await response.json();
-      setData(result.urls);
-      setTotal(result.total);
+      setData(result.urls || []);
+      setTotal(result.total || 0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      console.error('Dashboard fetch error:', err);
+      if (err instanceof Error) {
+        if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+          setError('Cannot connect to backend server. Please make sure the backend is running on localhost:8080');
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError('An unexpected error occurred');
+      }
+      setData([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
@@ -86,6 +99,8 @@ export default function Dashboard() {
 
   // Auto-refresh for running statuses
   useEffect(() => {
+    if (data.length === 0) return;
+
     const interval = setInterval(() => {
       const hasRunningUrls = data.some(url => url.status === 'running' || url.status === 'queued');
       if (hasRunningUrls) {
@@ -96,6 +111,17 @@ export default function Dashboard() {
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
+
+  // Auto-hide success message after 5 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 5000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -132,15 +158,19 @@ export default function Dashboard() {
     if (selectedIds.length === 0) return;
 
     try {
-      const response = await fetch('http://localhost:8080/api/urls/bulk', {
+      setError(null);
+      setSuccess(null);
+      
+      const endpoint = action === 'delete' ? '/api/urls/bulk-delete' : '/api/urls/bulk-rerun';
+      
+      const response = await fetch(`http://localhost:8080${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer devtoken123'
         },
         body: JSON.stringify({
-          ids: selectedIds,
-          action
+          ids: selectedIds
         })
       });
 
@@ -148,6 +178,10 @@ export default function Dashboard() {
         throw new Error('Bulk action failed');
       }
 
+      const count = selectedIds.length;
+      const actionText = action === 'delete' ? 'deleted' : 'queued for re-analysis';
+      setSuccess(`Successfully ${actionText} ${count} URL${count > 1 ? 's' : ''}`);
+      
       setSelectedIds([]);
       fetchData();
     } catch (err) {
@@ -178,9 +212,23 @@ export default function Dashboard() {
 
   if (loading && data.length === 0) {
     return (
-      <div className="p-6">
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <Link
+              to="/"
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Add New URL
+            </Link>
+          </div>
+        </div>
         <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">Loading dashboard...</p>
+          </div>
         </div>
       </div>
     );
@@ -201,7 +249,30 @@ export default function Dashboard() {
 
         {error && (
           <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <div className="ml-3">
+                <h3 className="text-sm font-medium text-red-800">Connection Error</h3>
+                <div className="mt-2 text-sm text-red-700">
+                  <p>{error}</p>
+                  {error.includes('localhost:8080') && (
+                    <p className="mt-2">
+                      Make sure the backend server is running. Try: <code className="bg-red-200 px-1 rounded">go run main.go</code> in the backend directory.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {success && (
+          <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4">
+            {success}
           </div>
         )}
 
