@@ -3,10 +3,10 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
-	"github.com/AndriiKr1/webpage_analyzer/models"
 	"github.com/AndriiKr1/webpage_analyzer/database"
+	"github.com/AndriiKr1/webpage_analyzer/models"
 	"github.com/AndriiKr1/webpage_analyzer/services"
+	"github.com/gin-gonic/gin"
 )
 
 func CreateURL(c *gin.Context) {
@@ -29,7 +29,7 @@ func CreateURL(c *gin.Context) {
 		return
 	}
 
-	// Ось цей рядок запускає crawler у фоні
+	// Start processing the URL in the background
 	go services.ProcessURL(url.ID, req.URL)
 
 	c.JSON(http.StatusOK, url)
@@ -42,4 +42,69 @@ func ListURLs(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, urls)
+}
+
+func GetURL(c *gin.Context) {
+	id := c.Param("id")
+	var url models.URL
+
+	if err := database.DB.First(&url, id).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, url)
+}
+
+func DeleteURL(c *gin.Context) {
+	id := c.Param("id")
+
+	if err := database.DB.Delete(&models.URL{}, id).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete URL"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "URL deleted successfully"})
+}
+
+func BulkDeleteURLs(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids"`
+	}
+
+	if err := c.BindJSON(&req); err != nil || len(req.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if err := database.DB.Delete(&models.URL{}, req.IDs).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete URLs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "URLs deleted successfully"})
+}
+
+func BulkRerunURLs(c *gin.Context) {
+	var req struct {
+		IDs []uint `json:"ids"`
+	}
+
+	if err := c.BindJSON(&req); err != nil || len(req.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	for _, id := range req.IDs {
+		var url models.URL
+		if err := database.DB.First(&url, id).Error; err != nil {
+			continue
+		}
+
+		// Reset status to queued and restart analysis
+		database.DB.Model(&url).Update("status", "queued")
+		go services.ProcessURL(id, url.Address)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "URLs queued for re-analysis"})
 }
